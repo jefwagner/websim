@@ -1,0 +1,7 @@
+[package]
+name = "websim2"
+version = "0.1.1"
+authors = ["Jef Wagner <wagnerj@union.edu>"]
+
+[dependencies]
+stdweb = "0.4.8"
