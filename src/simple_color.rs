@@ -5,12 +5,12 @@ pub enum Color {
 }
 
 impl Color {
-	fn to_string(&self) -> String {
+	pub fn to_string(&self) -> String {
 		match self {
-			Color::Rgb{r,g,b} => {
-				format("rgb( {}, {}, {})",r,g,b)},
-			Color::Rgba{r,g,b,a} => {
-				format("rgba( {}, {}, {}, {})",r,g,b,a as f64/255.0)}
+			&Color::Rgb{r,g,b} => {
+				format!("rgb( {}, {}, {})",r,g,b)},
+			&Color::Rgba{r,g,b,a} => {
+				format!("rgba( {}, {}, {}, {})",r,g,b,a as f64/255.0)}
 		}
 	}
 }
@@ -21,12 +21,12 @@ mod tests {
 
 	#[test]
 	fn test_to_string() {
-		let rgb_white = Color::Rgb{r:255,b:255,c:255};
-		let rgba_opaque_white = Color::Rgb{r:255,g:255,b:255,a:255};
+		let rgb_white = Color::Rgb{r:255,g:255,b:255};
+		let rgba_opaque_white = Color::Rgba{r:255,g:255,b:255,a:255};
 		let white_string_1 = rgb_white.to_string();
 		let white_string_2 = rgba_opaque_white.to_string();
 
 		assert!(white_string_1 == "rgb( 255, 255, 255)");
-		assert!(white_string_2 == "rgba( 255, 255, 255, 1.0)");
+		assert!(white_string_2 == "rgba( 255, 255, 255, 1)");
 	}
 }

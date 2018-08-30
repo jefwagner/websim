@@ -1,5 +1,5 @@
 [package]
-name = "websim2"
+name = "websim"
 version = "0.1.1"
 authors = ["Jef Wagner <wagnerj@union.edu>"]
 
