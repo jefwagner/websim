@@ -201,6 +201,13 @@ impl Toggle {
 		self.button.get_attribute("data-toggle-state").unwrap() == "on"
 	}
 
+	// pub fn toggle_off( &self) {
+	// 	let test = self.query();
+	// 	if !test {
+	// 		self.button.dispatch_event( ClickEvent)
+	// 	}
+	// }
+
 	pub fn add_toggle_function<F>( &self, func:F)
 		where F: Fn(bool) + 'static {
 		self.button.add_event_listener({
@@ -433,6 +440,11 @@ impl Range {
 		value
 	}
 
+	pub fn set( &self, value: f64) {
+		self.slider.set_raw_value( &value.to_string());
+		self.input.set_raw_value( &self.slider.raw_value());
+	}
+
 	pub fn add_range_function<F>( &self, func:F)
 		where F: Fn(f64) + 'static {
 		let func = Rc::new(func);
@@ -464,6 +476,43 @@ impl Range {
 			let func = func.clone();
 			let range = self.clone();
 			move | _:ChangeEvent | {
+				let val = range.query();
+				func(val);
+			}
+		});
+	}
+
+	pub fn add_continuous_range_function<F>( &self, func:F)
+		where F: Fn(f64) + 'static {
+		let func = Rc::new(func);
+		self.input.add_event_listener({
+			let func = func.clone();
+			let range = self.clone();
+			move | _:ChangeEvent | {
+				let val = range.query();
+				func(val);
+			}
+		});
+		self.minus_button.add_event_listener({
+			let func = func.clone();
+			let range = self.clone();
+			move | _:ClickEvent | {
+				let val = range.query();
+				func(val);
+			}
+		});
+		self.plus_button.add_event_listener({
+			let func = func.clone();
+			let range = self.clone();
+			move | _:ClickEvent | {
+				let val = range.query();
+				func(val);
+			}
+		});
+		self.slider.add_event_listener({
+			let func = func.clone();
+			let range = self.clone();
+			move | _:InputEvent | {
 				let val = range.query();
 				func(val);
 			}

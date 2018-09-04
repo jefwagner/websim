@@ -21,6 +21,7 @@ use stdweb::web::event::{
 // use ::control::Button;
 use ::container::UiElement;
 // use ::gfx::Drawable;
+use ::gfx::Graphic;
 
 const DEFAULT_CANVAS_WIDTH : u32 = 500;
 const DEFAULT_CANVAS_HEIGHT : u32 = 500;
@@ -120,10 +121,10 @@ impl Canvas {
 		self
 	}
 
-	// pub fn draw<'a, T: Drawable>( &'a self, object: &T) -> &'a Canvas {
-	// 	object.draw( &self);
-	// 	self
-	// }
+	pub fn draw<'a>( &'a self, object: &Graphic) -> &'a Canvas {
+		object.draw( &self);
+		self
+	}
 }
 
 // impl UiElement for Canvas {}
