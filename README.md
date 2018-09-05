@@ -1,11 +1,66 @@
 websim
 ======
 
-This library provides a web-based simulation library. This is built upon stdweb
+This library provides a web-based simulation library. This is built upon stdweb, and is still in a very early state.
+
+To do:
+------
+- [ ] Finish simple harmonic oscillator
+  - [ ] Get reset working correctly
+  - [ ] Get header & start/stop of data working
+- [ ] Create einstein relation simulation
+- [ ] Create brownian polymer simulation
+- [ ] Comment simple_vec
+- [ ] Add to simple_color
+  - [ ] Add sRGB blending
+  - [ ] Add HSV/HSB to RGB
+  - [ ] Add named colors
+- [ ] Comment simple_color
+- [ ] Comment container
+- [ ] Comment control
+- [ ] Comment output
+- [ ] Comment gfx
+- [ ] Comment extra
+- [ ] Comment examples
+- [ ] Finish README
+
+Overview
+--------
+Paragraph describing numerical simulations.
+
+Description of simple simuations
 
 Simulation with object oriented programming:
+* constant parameters
 * object holds data
 * object evolves in steps
+* external loop controls the stepping proceedure
+* often NO visualization, only outputs numeric data
+
+Describing of shortcomings, addition of interactive simulations.
+
+Interactive simulation in browser:
+* non-constant parameters controlable with widgets
+* object holds data
+* object evolves in steps
+* the browsers java-script event loops controls execution
+* visualization is in real-time on the web page
+* numerical output must be written to a text-box
+
+This library provides:
+* Simple widgets for parameter control including:
+  - Checkboxes
+  - Buttons
+  - Dropdown selectors
+  - Sliders
+* Interface to web-based outputs including:
+  - Canvas
+  - TextArea (a multi-line webpage)
+* Wrapper to attach the simulation object to interface 
+  with the event loop through the "requestion animation 
+  frame" event.
+
+Example of using library to convert simple simulation into interactive simulations.
 
 Simple example
 ```rust
@@ -55,40 +110,3 @@ fn main() {
   } 
 }
 ```
-
-Library:
-  provides a wrapper for the object 
-    uses request-animation-frame to call the step
-
-For the web-based widgets, the library provides:
-* Outputs
-  - Canvas
-  - TextArea
-* Controls
-  - Checkboxes
-  - Buttons
-  - Dropdown selectors
-  - Sliders
-
-
-To do:
-------
-- [ ] Finish simple harmonic oscillator
-  - [ ] Get reset working correctly
-  - [ ] Get header & start/stop of data working
-- [ ] Create einstein relation simulation
-- [ ] Create brownian polymer simulation
-- [ ] Comment simple_vec
-- [ ] Add to simple_color
-  - [ ] Add sRGB blending
-  - [ ] Add HSV/HSB to RGB
-  - [ ] Add named colors
-- [ ] Comment simple_color
-- [ ] Comment container
-- [ ] Comment control
-- [ ] Comment output
-- [ ] Comment gfx
-- [ ] Comment extra
-- [ ] Comment examples
-- [ ] Finish README
-
