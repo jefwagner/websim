@@ -65,15 +65,15 @@ impl Screen {
 		vis.add( &sim_control);
 		vis.add( &sim_reset);
 
-		let mass_slider = Range::new("m", "Mass (g) : ", 50.0, 500.0, 1.0, 10.0);
+		let mass_slider = Range::new("m", "m (g) : ", 50.0, 500.0, 1.0, 10.0);
 		mass_slider.set(250.0);
-		let spring_slider = Range::new("k", "Spring constant (N/m) : ", 1.0, 20.0, 0.1, 1.0);
+		let spring_slider = Range::new("k", "k (N/m) : ", 1.0, 20.0, 0.1, 1.0);
 		spring_slider.set(10.0);
-		let gravity_slider = Range::new("g", "Gravitational acceleration (m/s^2) : ", 1.0, 20.0, 0.1, 1.0);
+		let gravity_slider = Range::new("g", "g (m/s^2) : ", 1.0, 20.0, 0.1, 1.0);
 		gravity_slider.set(9.8);
-		let amp_slider = Range::new("a_0", "Initial drop (cm) : ", 0.0, 20.0, 0.1, 1.0);
+		let amp_slider = Range::new("a_0", "y₀ (cm) : ", 0.0, 20.0, 0.1, 1.0);
 		amp_slider.set(0.0);
-		let angle_slider = Range::new("th_0", "Initial angle (deg) : ", -25.0, 25.0, 1.0, 5.0);
+		let angle_slider = Range::new("th_0", "θ₀ (deg) : ", -25.0, 25.0, 1.0, 5.0);
 		angle_slider.set(0.0);
 		controls.add( &mass_slider);
 		controls.add( &spring_slider);
@@ -279,9 +279,14 @@ fn main() {
 		}
 	});
 	screen.sim_reset.add_button_function({
+		let sim_control = screen.sim_control.clone();
 		let state = state.clone();
 		move | _:bool | {
 			let mut borrow = state.borrow_mut();			
+			if sim_control.query() {
+				borrow.stop_loop();
+				sim_control.set(false);
+			}
 			borrow.state.sho_state.reset();
 			borrow.state.draw();
 		}
@@ -293,10 +298,7 @@ fn main() {
 		move | val:f64 | {
 			let mut borrow = state.borrow_mut();
 			borrow.state.sho_state.a_0 = L0 + val/100.0;
-			if !sim_control.query() {
-				borrow.state.sho_state.reset();
-				borrow.state.draw();
-			}
+			borrow.state.draw();
 		}
 	});
 
@@ -306,17 +308,16 @@ fn main() {
 		move | val:f64 | {
 			let mut borrow = state.borrow_mut();
 			borrow.state.sho_state.th_0 = val.to_radians();
-			if !sim_control.query() {
-				borrow.state.sho_state.reset();
-				borrow.state.draw();
-			}
+			borrow.state.draw();
 		}
 	});
 
 	screen.mass_slider.add_continuous_range_function({
 		let state = state.clone();
 		move | val:f64 | {
-			state.borrow_mut().state.sho_state.m = val/1000.0;
+			let mut borrow = state.borrow_mut();
+			borrow.state.sho_state.m = val/1000.0;
+			borrow.state.draw();
 		}
 	});
 

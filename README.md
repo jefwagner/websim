@@ -6,7 +6,7 @@ This library provides a web-based simulation library. This is built upon stdweb,
 To do:
 ------
 - [ ] Finish simple harmonic oscillator
-  - [ ] Get reset working correctly
+  - [x] Get reset working correctly
   - [ ] Get header & start/stop of data working
 - [ ] Create einstein relation simulation
 - [ ] Create brownian polymer simulation

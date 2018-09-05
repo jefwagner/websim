@@ -160,6 +160,8 @@ fn query_button( name: &str) -> bool {
 pub struct Toggle{
 	elem: HtmlElement,
 	button: InputElement,
+	text_on: String,
+	text_off: String,
 }
 
 impl Toggle {
@@ -190,31 +192,36 @@ impl Toggle {
 			}
 		});
 		elem.append_child( &button);
-		Toggle{ elem: elem, button: button }
-	}
-
-	pub fn create_from( elem: HtmlElement, button: InputElement) -> Toggle {
-		Toggle{ elem: elem, button: button }
+		Toggle{ 
+			elem: elem, 
+			button: button, 
+			text_on: String::from(text_on),
+			text_off: String::from(text_off),
+		}
 	}
 
 	pub fn query( &self) -> bool {
 		self.button.get_attribute("data-toggle-state").unwrap() == "on"
 	}
 
-	// pub fn toggle_off( &self) {
-	// 	let test = self.query();
-	// 	if !test {
-	// 		self.button.dispatch_event( ClickEvent)
-	// 	}
-	// }
+	pub fn set( &self, new_state:bool) {
+		let current_state = self.query();
+		if current_state && !new_state {
+			self.button.set_raw_value( &self.text_off);
+			self.button.set_attribute( "data-toggle-state", "off").unwrap();
+		} else if !current_state && new_state {
+			self.button.set_raw_value( &self.text_on);
+			self.button.set_attribute("data-toggle-state", "on").unwrap();
+		}
+	}
 
 	pub fn add_toggle_function<F>( &self, func:F)
 		where F: Fn(bool) + 'static {
 		self.button.add_event_listener({
 			let toggle = self.clone();
 			move | _:ClickEvent | {
-				let is_on = toggle.query();
-				func(is_on);
+				let current_state = toggle.query();
+				func(current_state);
 			}
 		});
 	}
