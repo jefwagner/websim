@@ -74,15 +74,15 @@ For the web-based widgets, the library provides:
 To do:
 ------
 - [ ] Finish simple harmonic oscillator
--   [ ] Get reset working correctly
--   [ ] Get header & start/stop of data working
+  - [ ] Get reset working correctly
+  - [ ] Get header & start/stop of data working
 - [ ] Create einstein relation simulation
 - [ ] Create brownian polymer simulation
 - [ ] Comment simple_vec
 - [ ] Add to simple_color
--   [ ] Add sRGB blending
--   [ ] Add HSV/HSB to RGB
--   [ ] Add named colors
+  - [ ] Add sRGB blending
+  - [ ] Add HSV/HSB to RGB
+  - [ ] Add named colors
 - [ ] Comment simple_color
 - [ ] Comment container
 - [ ] Comment control
