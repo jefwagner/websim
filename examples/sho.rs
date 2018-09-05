@@ -199,7 +199,7 @@ impl ShoState{
 	}
 
 	fn write(&self, textarea: &TextArea) {
-		textarea.writeln(&format!(
+		textarea.write(&format!(
 			"{{ {}, {}, {}, {}, {} }}", 
 			self.t, self.r.x*100.0, (self.r.y-L0)*100.0, self.v.x, self.v.y
 		));
@@ -208,6 +208,7 @@ impl ShoState{
 
 #[derive(Debug,Clone)]
 struct FullSim{
+	writing: bool,
 	step_count: u32,
 	screen: Screen,
 	sho_state: ShoState,
@@ -232,11 +233,23 @@ impl SimStep for FullSim {
 		}
 
 		if self.screen.output_control.query() {
+			if !self.writing {
+				self.writing = true;
+				self.sho_state.write_header( &self.screen.textarea);
+				self.screen.textarea.write("{");
+				self.sho_state.write( &self.screen.textarea);
+			}
 			if self.step_count == 5 {
 				self.step_count = 0;
+				self.screen.textarea.writeln(",");
 				self.sho_state.write( &self.screen.textarea);
 			} else {
 				self.step_count += 1;
+			}
+		} else {
+			if self.writing {
+				self.writing = false;
+				self.screen.textarea.writeln("}");
 			}
 		}
 
@@ -245,9 +258,14 @@ impl SimStep for FullSim {
 }
 
 fn main() {
+	let writing = false;
 	let screen = Screen::new();
 	let mut sho_state = ShoState::new(&screen);
-	let mut sim = FullSim{step_count: 0, screen: screen.clone(), sho_state};
+	let mut sim = FullSim{
+		writing,
+		step_count: 0, 
+		screen: screen.clone(), 
+		sho_state};
 	sim.draw();
 	let state = Simloop::new_ref( sim);
 	screen.sim_control.add_toggle_function({
@@ -263,8 +281,7 @@ fn main() {
 	screen.sim_reset.add_button_function({
 		let state = state.clone();
 		move | _:bool | {
-			let mut borrow = state.borrow_mut();
-			borrow.stop_loop();
+			let mut borrow = state.borrow_mut();			
 			borrow.state.sho_state.reset();
 			borrow.state.draw();
 		}
