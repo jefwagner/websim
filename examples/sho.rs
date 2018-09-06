@@ -69,7 +69,7 @@ impl Screen {
 		mass_slider.set(250.0);
 		let spring_slider = Range::new("k", "k (N/m) : ", 1.0, 20.0, 0.1, 1.0);
 		spring_slider.set(10.0);
-		let gravity_slider = Range::new("g", "g (m/s^2) : ", 1.0, 20.0, 0.1, 1.0);
+		let gravity_slider = Range::new("g", "g (m/s²) : ", 1.0, 20.0, 0.1, 1.0);
 		gravity_slider.set(9.8);
 		let amp_slider = Range::new("a_0", "y₀ (cm) : ", 0.0, 20.0, 0.1, 1.0);
 		amp_slider.set(0.0);
@@ -155,6 +155,7 @@ impl ShoState{
 	}
 
 	fn reset(&mut self) {
+		self.t = 0.0;
 		let (s, c) = self.th_0.sin_cos();
 		self.r = Point{x: self.a_0*s, y: -self.a_0*c};
 		self.v = Point{x: 0.0, y:0.0};
@@ -232,24 +233,13 @@ impl SimStep for FullSim {
 			self.sho_state.vv_step(dt);
 		}
 
-		if self.screen.output_control.query() {
-			if !self.writing {
-				self.writing = true;
-				self.sho_state.write_header( &self.screen.textarea);
-				self.screen.textarea.write("{");
-				self.sho_state.write( &self.screen.textarea);
-			}
+		if self.writing {
 			if self.step_count == 5 {
-				self.step_count = 0;
 				self.screen.textarea.writeln(",");
 				self.sho_state.write( &self.screen.textarea);
+				self.step_count = 0;
 			} else {
 				self.step_count += 1;
-			}
-		} else {
-			if self.writing {
-				self.writing = false;
-				self.screen.textarea.writeln("}");
 			}
 		}
 
@@ -272,33 +262,83 @@ fn main() {
 		let state = state.clone();
 		move | status:bool | {
 			if status {
+				{
+					let mut ref_state = state.borrow_mut();
+					if ref_state.state.writing {
+						ref_state.state.sho_state.write_header( &ref_state.state.screen.textarea);
+						ref_state.state.screen.textarea.write("{");
+						ref_state.state.sho_state.write( &ref_state.state.screen.textarea);
+						ref_state.state.step_count = 0;
+					}
+				}
 				Simloop::start_loop(state.clone());
 			} else {
-				state.borrow_mut().stop_loop();
+				let mut ref_state = state.borrow_mut();
+				if ref_state.state.writing {
+					ref_state.state.screen.textarea.writeln("}");
+				}
+				ref_state.stop_loop();
 			}
 		}
 	});
 	screen.sim_reset.add_button_function({
 		let sim_control = screen.sim_control.clone();
+		let output_control = screen.output_control.clone();
 		let state = state.clone();
 		move | _:bool | {
-			let mut borrow = state.borrow_mut();			
+			let mut ref_state = state.borrow_mut();
 			if sim_control.query() {
-				borrow.stop_loop();
+				ref_state.stop_loop();
 				sim_control.set(false);
+				if ref_state.state.writing {
+					ref_state.state.screen.textarea.writeln("}");
+					ref_state.state.writing = false;
+					output_control.set(false);					
+				}
 			}
-			borrow.state.sho_state.reset();
-			borrow.state.draw();
+			ref_state.state.sho_state.reset();
+			ref_state.state.draw();
 		}
 	});
+	screen.output_control.add_toggle_function({
+		let state = state.clone();
+		move | status:bool | {
+			let mut ref_state = state.borrow_mut();
+			ref_state.state.writing = status;
+			if ref_state.state.screen.sim_control.query() {
+				if status {			
+					ref_state.state.sho_state.write_header( &ref_state.state.screen.textarea);
+					ref_state.state.screen.textarea.write("{");
+					ref_state.state.sho_state.write( &ref_state.state.screen.textarea);
+					ref_state.state.step_count = 0;
+				} else {
+					ref_state.state.screen.textarea.writeln("}");					
+				}
+			}
+		}
+	});
+	screen.output_clear.add_button_function({
+		let state = state.clone();
+		move | _:bool| {
+			let mut ref_state = state.borrow_mut();
+			let running = ref_state.state.screen.sim_control.query();
+			if running && ref_state.state.writing {
+					ref_state.state.sho_state.write_header( &ref_state.state.screen.textarea);
+					ref_state.state.screen.textarea.write("{");
+					ref_state.state.sho_state.write( &ref_state.state.screen.textarea);
+					ref_state.state.step_count = 0;
+			}
+		}
+	});
+
 
 	screen.amp_slider.add_continuous_range_function({
 		let sim_control = screen.sim_control.clone();
 		let state = state.clone();
 		move | val:f64 | {
-			let mut borrow = state.borrow_mut();
-			borrow.state.sho_state.a_0 = L0 + val/100.0;
-			borrow.state.draw();
+			let mut ref_state = state.borrow_mut();
+			ref_state.state.sho_state.a_0 = L0 + val/100.0;
+			ref_state.state.draw();
 		}
 	});
 
@@ -306,18 +346,18 @@ fn main() {
 		let sim_control = screen.sim_control.clone();
 		let state = state.clone();
 		move | val:f64 | {
-			let mut borrow = state.borrow_mut();
-			borrow.state.sho_state.th_0 = val.to_radians();
-			borrow.state.draw();
+			let mut ref_state = state.borrow_mut();
+			ref_state.state.sho_state.th_0 = val.to_radians();
+			ref_state.state.draw();
 		}
 	});
 
 	screen.mass_slider.add_continuous_range_function({
 		let state = state.clone();
 		move | val:f64 | {
-			let mut borrow = state.borrow_mut();
-			borrow.state.sho_state.m = val/1000.0;
-			borrow.state.draw();
+			let mut ref_state = state.borrow_mut();
+			ref_state.state.sho_state.m = val/1000.0;
+			ref_state.state.draw();
 		}
 	});
 
