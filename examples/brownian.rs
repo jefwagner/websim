@@ -184,7 +184,24 @@ fn lj(ri: Point, rj: Point, p: Params) -> Point {
 		let ir2 = sigma*sigma/r2;
 		let ir6 = ir2*ir2*ir2;
 		let ir12 = ir6*ir6;
-		24.0*ep*rij/sigma/sigma*ir2*(2.0*ir12-ir6)
+		24.0*ep*rij/r2*(2.0*ir12-ir6)
+	}
+}
+
+/// Stockmeyer force between the two points
+fn stkmyr(ri: Point, rj: Point, p: Params) -> Point {
+	let Params{rpar, rsol, ep, ..} = p;
+	let sigma = 2.0*rsol;
+	let shift = rpar-rsol; // Maybe
+	let rij = ri-rj;
+	let r = rij.norm();
+	if r > shift+sigma*CBRT2.sqrt() {
+		Point{x:0.0, y:0.0}
+	} else {
+		let ir1 = sigma/(r-shift);
+		let ir6 = ir1.powi(6);
+		let ir12 = ir6*ir6;
+		24*ep*rij/(r*(r-shift))*(2.0*ir12-ir6)
 	}
 }
 
@@ -196,7 +213,7 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 	let len = rsol.iter().count();
 	fsol.extend(iter::repeat(Point{x:0.0, y:0.0}).take(len));
 
-	/// Loop over all particle and stick them into bins
+	// Loop over all particle and stick them into bins
 	let size = SIZE/BIMAX as f64;
 	let mut binlist = BinList::new();
 	for (idx,pos) in rsol.iter().enumerate() {
@@ -204,17 +221,34 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 		let j = (pos.x/size) as usize;
 		binlist[[i,j]].push(idx);
 	}
-	/// Loop over the bins and calculate the forces
+	// Loop over the bins and calculate the forces
 	for i in 0..BIMAX {
 		for j in 0..BIMAX {
-			let mut bin = &binlist[[i,j]];
+			let bin = &binlist[[i,j]];
 			match bin.len() {
 				0 => {}, // Nothing here to see!
-				1 => { //
-//					calc_neighboring_forces;
-//					calc_big_particle_forces;
+				1 => { // calc forces in neighboring cells
+					let idx_i = bin[0];
+					let ri = rsol[idx_i];
+					let im = if i != 0 { i-1 } else { BIMAX-1 };
+					let jm = if j != 0 { j-1 } else { BIMAX-1 };
+					let jp = if j != BIMAX-1 { j+1 } else { 0 };
+					neighbors = [ (im, jm), (im, j), (im, jp), (i, jm) ];
+					for (ii,jj) in neighbors.iter() {
+						let other_bin = &binlist[[ii,jj]];
+						for idx_j in other_bin.iter() {
+							let rj = rsol[idx_j];
+							let f = lj(ri, rj, f);
+							fsol[idx_i] = fsol[idx_i] + f;
+							fsol[idx_j] = fsol[idx_j] - f;
+						}
+					}
+//					calc_big_particle_force;
+					let f = stkmyr(rpar, ri, p);
+					fpar = fpar + f;
+					fsol[idx_i] = fsol[idx_i] - f;
 				},
-				_ => {
+				_ => { // calc forces between particles in same bin
 					for k in 0..bin.len()-1 {
 						for l in k+1..bin.len() {
 							let ri = rsol[bin[i]];
@@ -224,10 +258,28 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 							fsol[bin[j]] = fsol[bin[j]] - f;
 						}
 					}
-//					for_each_item {
+					for idx_i in bin.iter() {
 //						calc_neighboring_forces;
+						let idx_i = bin[0];
+						let ri = rsol[idx_i];
+						let im = if i != 0 { i-1 } else { BIMAX-1 };
+						let jm = if j != 0 { j-1 } else { BIMAX-1 };
+						let jp = if j != BIMAX-1 { j+1 } else { 0 };
+						neighbors = [ (im, jm), (im, j), (im, jp), (i, jm) ];
+						for (ii,jj) in neighbors.iter() {
+							let other_bin = &binlist[[ii,jj]];
+							for idx_j in other_bin.iter() {
+								let rj = rsol[idx_j];
+								let f = lj(ri, rj, f);
+								fsol[idx_i] = fsol[idx_i] + f;
+								fsol[idx_j] = fsol[idx_j] - f;
+							}
+						}
 //						calc_big_particle_forces;
-//					}
+						let f = stkmyr(rpar, ri, p);
+						fpar = fpar + f;
+						fsol[idx_i] = fsol[idx_i] - f;
+					}
 				}
 			}
 		}
