@@ -1,8 +1,7 @@
 extern crate websim;
-extern crate rand;
+extern crate smallvec;
 
-use rand::{thread_rng,Rng};
-use rand::distributions::{Normal};
+use smallvec::SmallVec;
 
 use websim::container::Container;
 use websim::output::{
@@ -13,6 +12,14 @@ use websim::gfx::Graphic;
 
 use websim::simple_vec::Vec2 as Point;
 use websim::simple_color::Color::{Rgb};
+
+use websim::simulation::get_time;
+use websim::simple_rng::NormalDist;
+
+use std::ops::{
+	Index,
+	IndexMut,
+};
 
 const CBRT2 : f64 = 1.259921049894873164767210607278228350570251464701507980081_f64;
 #[allow(non_upper_case_globals)]
@@ -45,21 +52,6 @@ impl Params {
 	}
 }
 
-/// Lennard Jones force between two solvent molecules
-fn lj(ri: Point, rj: Point, p: Params) -> Point {
-	let Params{rsol, ep, ..} = p;
-	let sigma = 2.0*rsol;
-	let rij = ri-rj;
-	let r2 = rij.norm_squared();
-	if r2 >= sigma*sigma*CBRT2 {
-		Point{x:0.0, y:0.0}
-	} else {
-		let ir2 = sigma*sigma/r2;
-		let ir6 = ir2*ir2*ir2;
-		let ir12 = ir6*ir6;
-		24.0*ep*rij/sigma/sigma*ir2*(2.0*ir12-ir6)
-	}
-}
 
 /// Structure that holds the state variables
 #[derive(Debug,Clone)]
@@ -75,10 +67,16 @@ struct State {
 
 /// Size of screen
 const SIZE : f64 = 30.0;
+/// Maximum number of bins across
+const BIMAX : usize = 15;
 
 impl State {
 	/// Create an initial arrangement of solvent
-	/// molecules. The particles are put on a grid 
+	/// molecules. The particles are put on a grid a
+	/// distance `spacing` appart, and any that overlap
+	/// the central large particle are rejected. The 
+	/// initial velocites are taken from a maxwell
+	/// distribution.
 	fn init(spacing: f64, p: Params) -> State {
 		let t = 0.0;
 		let Params{rsol:rad_sol, rpar: rad_par, temp, msol, ..} = p;
@@ -87,8 +85,11 @@ impl State {
 		let mut rsol = Vec::new();
 		let mut vsol = Vec::new();
 
-		let mut rng = thread_rng();
-		// let maxwell = Normal::new(0.0, (kB*temp/msol).sqrt());
+		let s0 = get_time();
+		let s1 = 0_u64;
+		let vstd = 1000.0*(kB*temp/msol).sqrt(); // ns/nm
+		let mut maxwell_dist = NormalDist::new(0.0, vstd);
+ 		maxwell_dist.seed(s0,s1);
 
 		let mut r = Point{x:spacing/2.0, y:spacing/2.0};
 		while r.y < SIZE-spacing/2.0 {
@@ -96,9 +97,9 @@ impl State {
 				let dist = (r-rpar).norm();
 				if dist > rad_par+rad_sol {
 					rsol.push(r);
-					// let vx = maxwell.sample(&mut rng);
-					// let vy = maxwell.sample(&mut rng);
-					// vsol.push(Point{x:vx, y:vy});
+					let vx = maxwell_dist.next();
+					let vy = maxwell_dist.next();
+					vsol.push(Point{x:vx, y:vy});
 				}
 				r.x += spacing;
 			}
@@ -115,7 +116,7 @@ impl State {
 	}
 
 	fn draw(&self, p: Params, canvas: &Canvas) {
-		let Params{rpar, rsol, ..} = p;
+ 		let Params{rpar, rsol, ..} = p;
 		canvas.clear();
 		let mut par = Graphic::circle(self.rpar, rpar);
 		par.set_color(Rgb{r:255,g:0,b:0});
@@ -125,6 +126,113 @@ impl State {
 			canvas.draw(&sol);
 		}
 	}
+}
+
+/// Structure the divides the space into square regions
+/// called 'bins'. Each bin contains a smallvec (vector
+/// on the stack - provided with the smallvec crate) that
+/// holds the solvent particles in that set. Currently
+/// it holds the indices.
+type Bin = SmallVec<[usize;4]>;
+struct BinList {
+	bins: Vec<Bin>,
+}
+
+impl Index<[usize;2]> for BinList{
+	type Output = Bin;
+
+	fn index<'a>(&'a self, idx: [usize;2]) -> &'a Bin {
+		&self.bins[idx[0]*BIMAX+idx[1]]
+	}
+}
+
+impl IndexMut<[usize;2]> for BinList{
+	fn index_mut<'a>(&'a mut self, idx: [usize;2]) -> &'a mut Bin {
+		&mut self.bins[idx[0]*BIMAX+idx[1]]
+	}
+}
+
+impl BinList{
+	fn new() -> BinList {
+		let mut bins : Vec<Bin> = Vec::with_capacity(BIMAX*BIMAX);
+		for _i in 0..BIMAX {
+			for _j in 0..BIMAX{
+				bins.push(SmallVec::<[usize;4]>::new());
+			}
+		}
+		BinList{bins}
+	}
+
+	fn clear(&mut self) {
+		for bin in self.bins.iter_mut() {
+			bin.clear();
+		}
+	}
+}
+
+/// Force calculation pieces
+
+/// Lennard Jones force between two solvent molecules
+fn lj(ri: Point, rj: Point, p: Params) -> Point {
+	let Params{rsol, ep, ..} = p;
+	let sigma = 2.0*rsol;
+	let rij = ri-rj;
+	let r2 = rij.norm_squared();
+	if r2 >= sigma*sigma*CBRT2 {
+		Point{x:0.0, y:0.0}
+	} else {
+		let ir2 = sigma*sigma/r2;
+		let ir6 = ir2*ir2*ir2;
+		let ir12 = ir6*ir6;
+		24.0*ep*rij/sigma/sigma*ir2*(2.0*ir12-ir6)
+	}
+}
+
+use std::iter;
+fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
+	// Initialize the forces
+	let mut fpar = Point{x:0.0, y:0.0};
+	let mut fsol : Vec<Point> = Vec::new();
+	let len = rsol.iter().count();
+	fsol.extend(iter::repeat(Point{x:0.0, y:0.0}).take(len));
+
+	/// Loop over all particle and stick them into bins
+	let size = SIZE/BIMAX as f64;
+	let mut binlist = BinList::new();
+	for (idx,pos) in rsol.iter().enumerate() {
+		let i = (pos.y/size) as usize;
+		let j = (pos.x/size) as usize;
+		binlist[[i,j]].push(idx);
+	}
+	/// Loop over the bins and calculate the forces
+	for i in 0..BIMAX {
+		for j in 0..BIMAX {
+			let mut bin = &binlist[[i,j]];
+			match bin.len() {
+				0 => {}, // Nothing here to see!
+				1 => { //
+//					calc_neighboring_forces;
+//					calc_big_particle_forces;
+				},
+				_ => {
+					for k in 0..bin.len()-1 {
+						for l in k+1..bin.len() {
+							let ri = rsol[bin[i]];
+							let rj = rsol[bin[j]];
+							let f = lj(ri,rj,p);
+							fsol[bin[i]] = fsol[bin[i]] + f;
+							fsol[bin[j]] = fsol[bin[j]] - f;
+						}
+					}
+//					for_each_item {
+//						calc_neighboring_forces;
+//						calc_big_particle_forces;
+//					}
+				}
+			}
+		}
+	}
+	(fpar, fsol)
 }
 
 fn main() {
@@ -153,7 +261,7 @@ fn main() {
 	for vel in &state.vsol {
 		textarea.writeln(&format!("v = {:?}",vel));
 	}
-	textarea.writeln("");
-	textarea.writeln(&format!("number of solvent molecules: {}", state.rsol.len()));
+	// textarea.writeln("");
+	// textarea.writeln(&format!("number of solvent molecules: {}", state.rsol.len()));
 
 }

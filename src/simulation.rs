@@ -102,3 +102,26 @@ impl<T: SimStep + 'static> Simloop<T> {
 	// 	Toggle::create_from(elem, button)
 	// }
 }
+
+/// A time function!
+pub fn get_time() -> u64 {
+	let value = js! {
+		var d = new Date();
+//		console.log(d);
+		var n = d.getTime();
+		// console.log(n);
+		return n;
+    };
+	// js!{ @(no_return)
+	// 	console.log(@{value});
+	// };
+	let time : u64 = value.try_into().unwrap();
+//	let time : u64 = 0;
+	// let str_time = time.to_string();
+	// js!{ @(no_return)
+	// 	console.log(@{str_time});
+	// };
+    // let time : String = value.try_into().unwrap();
+    time
+}
+

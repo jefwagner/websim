@@ -55,7 +55,7 @@ This library provides:
   - Sliders
 * Interface to web-based outputs including:
   - Canvas
-  - TextArea (a multi-line webpage)
+  - TextArea (a multi-line textbox)
 * Wrapper to attach the simulation object to interface 
   with the event loop through the "requestion animation 
   frame" event.

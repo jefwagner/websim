@@ -7,4 +7,4 @@ authors = ["Jef Wagner <wagnerj@union.edu>"]
 stdweb = "0.4.8"
 
 [dev-dependencies]
-rand = "0.5.5"
+smallvec = "0.6.5"
