@@ -1,9 +1,12 @@
-extern crate websim;
 extern crate smallvec;
-
 use smallvec::SmallVec;
 
+extern crate websim;
+
 use websim::container::Container;
+use websim::control::{
+	Button,
+};
 use websim::output::{
 	Canvas,
 	TextArea,
@@ -21,7 +24,14 @@ use std::ops::{
 	IndexMut,
 };
 
-const CBRT2 : f64 = 1.259921049894873164767210607278228350570251464701507980081_f64;
+use std::rc::Rc;
+use std::cell::RefCell;
+
+use websim::simulation::{
+	SimStep,
+	Simloop,
+};
+
 #[allow(non_upper_case_globals)]
 const kB : f64 = 0.0138064838709677419355_f64;
 
@@ -31,8 +41,8 @@ struct Params{
 	force: f64, // Force on large particle
 	temp: f64, // Temperature
 	ep: f64, // Lennard Jones potential depth
-	rsol: f64, // solvent particle radius
-	rpar: f64, // large particle radius
+	rad_sol: f64, // solvent particle radius
+	rad_par: f64, // large particle radius
 	msol: f64, // solvent particle mass
 	mpar: f64, // large particle mass
 }
@@ -44,8 +54,8 @@ impl Params {
 			force: 0.0, // units: pN
 			temp: 310.0, // units: Kelvin
 			ep: 5.0, // units: pN nm
-			rsol: 0.15, // units: nm
-			rpar: 1.5, // units: nm
+			rad_sol: 0.15, // units: nm
+			rad_par: 1.5, // units: nm
 			msol: 30.0, // units: 10^-27 kg
 			mpar: 30000.0, // units: 10^-27 kg
 		}
@@ -70,6 +80,20 @@ const SIZE : f64 = 30.0;
 /// Maximum number of bins across
 const BIMAX : usize = 15;
 
+#[inline]
+fn wrap( r: &mut Point) {
+	if r.x > SIZE {
+		r.x -= SIZE;
+	} else if r.x < 0.0 {
+		r.x += SIZE;
+	}
+	if r.y > SIZE {
+		r.y -= SIZE;
+	} else if r.y < 0.0 {
+		r.y += SIZE;
+	}
+}
+
 impl State {
 	/// Create an initial arrangement of solvent
 	/// molecules. The particles are put on a grid a
@@ -79,17 +103,17 @@ impl State {
 	/// distribution.
 	fn init(spacing: f64, p: Params) -> State {
 		let t = 0.0;
-		let Params{rsol:rad_sol, rpar: rad_par, temp, msol, ..} = p;
+		let Params{rad_sol, rad_par, temp, msol, ..} = p;
 		let rpar = Point{x:SIZE/2.0, y:SIZE/2.0};
 		let vpar = Point{x:0.0, y:0.0};
 		let mut rsol = Vec::new();
 		let mut vsol = Vec::new();
 
-		let s0 = get_time();
-		let s1 = 0_u64;
+		// let s0 = get_time();
+		// let s1 = 0_u64;
 		let vstd = 1000.0*(kB*temp/msol).sqrt(); // ns/nm
 		let mut maxwell_dist = NormalDist::new(0.0, vstd);
- 		maxwell_dist.seed(s0,s1);
+ 		// maxwell_dist.seed(s0,s1);
 
 		let mut r = Point{x:spacing/2.0, y:spacing/2.0};
 		while r.y < SIZE-spacing/2.0 {
@@ -115,14 +139,98 @@ impl State {
 		}
 	}
 
+	fn step(&mut self, dt: f64, p: Params) {
+		let (fpar0, fsol0) = force_calc(p, self.rpar, &self.rsol);
+
+		let apar0 = fpar0/p.mpar*1.0E+6_f64;
+		self.rpar = self.rpar + self.vpar*dt + 0.5*apar0*dt*dt;
+		wrap(&mut self.rpar); 
+
+		{
+			let pos_vel_force = self.rsol.iter_mut()
+				.zip( self.vsol.iter())
+				.zip( fsol0.iter())
+				.map( |((r,v),f)| (r,v,f) );
+
+			for (pos,&vel,&force) in pos_vel_force {
+				let a = force/p.msol*1.0E+6_f64;
+				*pos = *pos + vel*dt + 0.5*a*dt*dt;
+				wrap(pos);
+			}
+		}
+
+		let (fpar1, fsol1) = force_calc(p, self.rpar, &self.rsol);
+
+		let apar1 = fpar1/p.mpar*1.0E+6_f64;
+		self.vpar = self.vpar + 0.5*(apar0 + apar1)*dt;
+
+		let vel_force0_force1 = self.vsol.iter_mut()
+			.zip( fsol0.iter())
+			.zip( fsol1.iter())
+			.map( |((v,f0),f1)| (v,f0,f1) );
+
+		for (vel, &force0, &force1) in vel_force0_force1 {
+			let a0 = force0/p.msol*1.0E+6_f64;
+			let a1 = force1/p.msol*1.0E+6_f64;
+			*vel = *vel + 0.5*(a0 + a1)*dt;
+			// if a1.norm() > 40.0E+6_f64 {
+			// 	println!("vel={:?}",vel);
+			// }
+		}
+	}
+	// 	let (fpar0, fsol0) = force_calc(p, self.rpar, &self.rsol);
+
+	// 	let apar0 = fpar0/p.mpar*1.0E+6_f64;
+	// 	self.rpar = self.rpar + self.vpar*dt + 0.5*apar0*dt*dt;
+
+	// 	{
+	// 	let pos_vel_force = self.rsol.iter_mut()
+	// 		.zip( self.vsol.iter())
+	// 		.zip( fsol0.iter())
+	// 		.map( |((r,v),f)| (r,v,f) );
+
+	// 	for (pos,&vel,&force) in pos_vel_force {
+	// 		let a = force/p.msol*1.0E+6_f64;
+	// 		*pos = *pos + vel*dt + 0.5*a*dt*dt;
+	// 		if pos.x > SIZE {
+	// 			pos.x -= SIZE;
+	// 		}else if pos.x < 0.0 {
+	// 			pos.x += SIZE;
+	// 		}
+	// 		if pos.y > SIZE {
+	// 			pos.y -= SIZE;
+	// 		} else if pos.y < 0.0 {
+	// 			pos.y += SIZE;
+	// 		}
+	// 	}
+	// 	}
+
+	// 	let (fpar1, fsol1) = force_calc(p, self.rpar, &self.rsol);
+
+	// 	let apar1 = fpar1/p.mpar*1.0E+6_f64;
+	// 	self.vpar = self.vpar + 0.5*(apar0 + apar1)*dt;
+
+	// 	let vel_force0_force1 = self.vsol.iter_mut()
+	// 		.zip( fsol0.iter())
+	// 		.zip( fsol1.iter())
+	// 		.map( |((v,f0),f1)| (v,f0,f1) );
+
+	// 	for (vel, &force0, &force1) in vel_force0_force1 {
+	// 		let a0 = force0/p.msol*1.0E+6_f64;
+	// 		let a1 = force1/p.msol*1.0E+6_f64;
+	// 		*vel = *vel + 0.5*(a0 + a1)*dt;
+	// 	}
+
+	// }
+
 	fn draw(&self, p: Params, canvas: &Canvas) {
- 		let Params{rpar, rsol, ..} = p;
+ 		let Params{rad_par, rad_sol, ..} = p;
 		canvas.clear();
-		let mut par = Graphic::circle(self.rpar, rpar);
+		let mut par = Graphic::circle(self.rpar, rad_par);
 		par.set_color(Rgb{r:255,g:0,b:0});
 		canvas.draw(&par);
 		for pos in self.rsol.iter().cloned() {
-			let sol = Graphic::circle(pos, rsol);
+			let sol = Graphic::circle(pos, rad_sol);
 			canvas.draw(&sol);
 		}
 	}
@@ -163,46 +271,53 @@ impl BinList{
 		BinList{bins}
 	}
 
-	fn clear(&mut self) {
-		for bin in self.bins.iter_mut() {
-			bin.clear();
-		}
-	}
+	// fn clear(&mut self) {
+	// 	for bin in self.bins.iter_mut() {
+	// 		bin.clear();
+	// 	}
+	// }
 }
 
 /// Force calculation pieces
 
-/// Lennard Jones force between two solvent molecules
-fn lj(ri: Point, rj: Point, p: Params) -> Point {
-	let Params{rsol, ep, ..} = p;
-	let sigma = 2.0*rsol;
-	let rij = ri-rj;
-	let r2 = rij.norm_squared();
-	if r2 >= sigma*sigma*CBRT2 {
-		Point{x:0.0, y:0.0}
+const LJN : i32 = 2;
+/// Scalar Lennard-Jones force
+fn lj(r: f64, p: Params) -> f64 {
+	let Params{rad_sol, ep, .. } = p;
+	let r0 = 2.0*rad_sol;
+	if r >= r0 {
+		0.0
 	} else {
-		let ir2 = sigma*sigma/r2;
-		let ir6 = ir2*ir2*ir2;
-		let ir12 = ir6*ir6;
-		24.0*ep*rij/r2*(2.0*ir12-ir6)
+		2.0*(LJN as f64)*ep/r*((r0/r).powi(2*LJN)-(r0/r).powi(LJN))
 	}
 }
 
-/// Stockmeyer force between the two points
-fn stkmyr(ri: Point, rj: Point, p: Params) -> Point {
-	let Params{rpar, rsol, ep, ..} = p;
-	let sigma = 2.0*rsol;
-	let shift = rpar-rsol; // Maybe
+/// force between two solvent particles with positions ri and rj
+fn forceij(ri: Point, rj: Point, p: Params) -> Point {
 	let rij = ri-rj;
 	let r = rij.norm();
-	if r > shift+sigma*CBRT2.sqrt() {
-		Point{x:0.0, y:0.0}
-	} else {
-		let ir1 = sigma/(r-shift);
-		let ir6 = ir1.powi(6);
-		let ir12 = ir6*ir6;
-		24.0*ep*rij/(r*(r-shift))*(2.0*ir12-ir6)
+	rij/r*lj(r, p)
+}
+
+/// force between the large particle and a solvent particle.
+fn forcepar(rpar: Point, rsol: Point, p: Params) -> Point {
+	let Params{rad_par, rad_sol, ..} = p;
+	let shift = rad_par-rad_sol;
+	let mut rij = rpar-rsol;
+	// This checks if we need to wrap around our screen
+	if rij.x < -SIZE+rad_par+rad_sol {
+		rij.x += SIZE;
+	} else if rij.x > SIZE-rad_par-rad_sol {
+		rij.x -= SIZE;
 	}
+	if rij.y < -SIZE+rad_par+rad_sol {
+		rij.y += SIZE;
+	} else if rij.y > SIZE-rad_par-rad_sol {
+		rij.y -= SIZE;
+	}
+	let r = rij.norm();
+	let rprime = r-shift;
+	rij/r*lj(rprime, p)
 }
 
 use std::iter;
@@ -237,14 +352,25 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 					for &(ii,jj) in neighbors.iter() {
 						let other_bin = &binlist[[ii,jj]];
 						for &idx_j in other_bin.iter() {
-							let rj = rsol[idx_j];
-							let f = lj(ri, rj, p);
+							let mut rj = rsol[idx_j];
+
+							if im == BIMAX-1 && ii == im {
+								rj.y -= SIZE;
+							}
+							if jm == BIMAX-1 && jj == jm {
+								rj.x -= SIZE;	
+							}
+							if jp == 0 && jj == jp {
+								rj.x += SIZE;
+							}
+
+							let f = forceij(ri, rj, p);
 							fsol[idx_i] = fsol[idx_i] + f;
 							fsol[idx_j] = fsol[idx_j] - f;
 						}
 					}
 					// calc_big_particle_force;
-					let f = stkmyr(rpar, ri, p);
+					let f = forcepar(rpar, ri, p);
 					fpar = fpar + f;
 					fsol[idx_i] = fsol[idx_i] - f;
 				},
@@ -253,7 +379,7 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 						for l in k+1..bin.len() {
 							let rk = rsol[bin[k]];
 							let rl = rsol[bin[l]];
-							let f = lj(rk,rl,p);
+							let f = forceij(rk,rl,p);
 							fsol[bin[k]] = fsol[bin[k]] + f;
 							fsol[bin[l]] = fsol[bin[l]] - f;
 						}
@@ -268,14 +394,25 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 						for &(ii,jj) in neighbors.iter() {
 							let other_bin = &binlist[[ii,jj]];
 							for &idx_j in other_bin.iter() {
-								let rj = rsol[idx_j];
-								let f = lj(ri, rj, p);
+								let mut rj = rsol[idx_j];
+
+								if im == BIMAX-1 && ii == im {
+									rj.y -= SIZE;
+								}
+								if jm == BIMAX-1 && jj == jm {
+									rj.x -= SIZE;	
+								}
+								if jp == 0 && jj == jp {
+									rj.x += SIZE;
+								}
+
+								let f = forceij(ri, rj, p);
 								fsol[idx_i] = fsol[idx_i] + f;
 								fsol[idx_j] = fsol[idx_j] - f;
 							}
 						}
 						// calc forces on the big particle
-						let f = stkmyr(rpar, ri, p);
+						let f = forcepar(rpar, ri, p);
 						fpar = fpar + f;
 						fsol[idx_i] = fsol[idx_i] - f;
 					}
@@ -286,11 +423,31 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 	(fpar, fsol)
 }
 
+#[derive(Debug,Clone)]
+struct FullSim{
+	writing: bool,
+	step_count: u32,
+	state: State,
+	p: Params,
+	canvas: Canvas,
+	textarea: TextArea,
+}
+
+impl SimStep for FullSim {
+	fn step( &mut self, _dt: f64) {
+		let dt = 0.00002;
+		self.state.step(dt, self.p);
+		self.state.draw(self.p, &self.canvas);
+	}
+}
+
 fn main() {
 	let app = Container::new("app");
 	app.add_to_body();
 	let mut canvas = Canvas::new("canvas");
 	app.add( &canvas);
+	let step_button = Button::new("step","Step");
+	app.add( &step_button);
 	let textarea = TextArea::new("txt");
 	app.add( &textarea);
 
@@ -298,20 +455,47 @@ fn main() {
 
 	let p = Params::init();
 	let state = State::init(0.6,p);
-	state.draw(p, &canvas);
 
-	let p0 = Point{x:0.0, y:0.0};
-	let dx = Point{x:0.0, y:0.0004};
-	for i in 0..2 {
-		let p1 = Point{x:0.0, y:0.3}+(i as f64)*dx;
-		let f = lj(p0, p1, p);
-		textarea.writeln(&format!("{{{}, {}}},",p1.y, f.y));
-	}
-	textarea.writeln("");
-	let (fpar, fsol) = force_calc(p, state.rpar, &state.rsol);
-	for force in &fsol {
-	 	textarea.writeln(&format!("f = {:?}",force));
-	}
+	let sim = FullSim{
+		writing: false,
+		step_count: 0,
+		p,
+		state,
+		canvas: canvas.clone(),
+		textarea: textarea.clone(),
+	};
+
+	let ref_sim = Simloop::new_ref(sim);
+	Simloop::start_loop(ref_sim.clone());
+
+	// let ref_state = Rc::new(RefCell::new(state));
+	// ref_state.borrow_mut().draw(p, &canvas);
+
+	// step_button.add_button_function({
+	// 	let ref_state = ref_state.clone();
+	// 	let canvas = canvas.clone();
+	// 	let textarea = textarea.clone();
+	// 	move | _:bool | {
+	// 		let mut state = ref_state.borrow_mut();
+	// 		state.step(0.00002, p);
+	// 		state.draw(p, &canvas);
+
+	// 		textarea.clear();
+	// 		let (fpar, _fsol) = force_calc(p, state.rpar, &state.rsol);
+	// 		textarea.writeln(&format!("f = {:?}", fpar));
+	// 		// for force in &fsol {
+	// 		// 	let Point{x, y} = *force;
+	// 		// 	if x != 0.0 && y != 0.0 {				
+	// 	 // 			textarea.writeln(&format!("f = {:?}",force));
+	// 	 // 		}
+	// 		// } 
+	// 	}
+	// })
+
+	// let (fpar, fsol) = force_calc(p, state.rpar, &state.rsol);
+	// for force in &fsol {
+	//  	textarea.writeln(&format!("f = {:?}",force));
+	// } 
 	// textarea.writeln("");
 	// textarea.writeln(&format!("number of solvent molecules: {}", state.rsol.len()));
 
