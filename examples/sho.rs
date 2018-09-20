@@ -275,7 +275,7 @@ fn main() {
 			} else {
 				let mut ref_state = state.borrow_mut();
 				if ref_state.state.writing {
-					ref_state.state.screen.textarea.writeln("}");
+					ref_state.state.screen.textarea.writeln("}\n");
 				}
 				ref_state.stop_loop();
 			}
@@ -291,7 +291,7 @@ fn main() {
 				ref_state.stop_loop();
 				sim_control.set(false);
 				if ref_state.state.writing {
-					ref_state.state.screen.textarea.writeln("}");
+					ref_state.state.screen.textarea.writeln("}\n");
 					ref_state.state.writing = false;
 					output_control.set(false);					
 				}
@@ -312,7 +312,7 @@ fn main() {
 					ref_state.state.sho_state.write( &ref_state.state.screen.textarea);
 					ref_state.state.step_count = 0;
 				} else {
-					ref_state.state.screen.textarea.writeln("}");					
+					ref_state.state.screen.textarea.writeln("}\n");					
 				}
 			}
 		}

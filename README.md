@@ -8,7 +8,7 @@ To do:
 - [x] Finish simple harmonic oscillator
   - [x] Get reset working correctly
   - [x] Get header & start/stop of data working
-- [ ] Create einstein relation simulation
+- [x] Create einstein relation simulation
 - [ ] Create brownian polymer simulation
 - [ ] Comment simple_vec
 - [ ] Add to simple_color

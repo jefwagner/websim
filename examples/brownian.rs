@@ -6,6 +6,8 @@ extern crate websim;
 use websim::container::Container;
 use websim::control::{
 	Button,
+	Toggle,
+	Range,
 };
 use websim::output::{
 	Canvas,
@@ -24,8 +26,8 @@ use std::ops::{
 	IndexMut,
 };
 
-use std::rc::Rc;
-use std::cell::RefCell;
+// use std::rc::Rc;
+// use std::cell::RefCell;
 
 use websim::simulation::{
 	SimStep,
@@ -55,9 +57,9 @@ impl Params {
 			temp: 310.0, // units: Kelvin
 			ep: 5.0, // units: pN nm
 			rad_sol: 0.15, // units: nm
-			rad_par: 1.5, // units: nm
+			rad_par: 0.75, // units: nm
 			msol: 30.0, // units: 10^-27 kg
-			mpar: 30000.0, // units: 10^-27 kg
+			mpar: 1500.0, // units: 10^-27 kg
 		}
 	}
 }
@@ -70,13 +72,15 @@ struct State {
 	// Particle position and velocity
 	rpar: Point,
 	vpar: Point,
+	// an offset for the position if it screenwraps
+	offset: Point,
 	// Solvent particle position and velocities
 	rsol: Vec<Point>,
 	vsol: Vec<Point>,
 }
 
 /// Size of screen
-const SIZE : f64 = 30.0;
+const SIZE : f64 = 15.0;
 /// Maximum number of bins across
 const BIMAX : usize = 15;
 
@@ -106,14 +110,15 @@ impl State {
 		let Params{rad_sol, rad_par, temp, msol, ..} = p;
 		let rpar = Point{x:SIZE/2.0, y:SIZE/2.0};
 		let vpar = Point{x:0.0, y:0.0};
+		let offset = Point{x:0.0, y:0.0};
 		let mut rsol = Vec::new();
 		let mut vsol = Vec::new();
 
-		// let s0 = get_time();
-		// let s1 = 0_u64;
+		let s0 = get_time();
+		let s1 = 0_u64;
 		let vstd = 1000.0*(kB*temp/msol).sqrt(); // ns/nm
 		let mut maxwell_dist = NormalDist::new(0.0, vstd);
- 		// maxwell_dist.seed(s0,s1);
+ 		maxwell_dist.seed(s0,s1);
 
 		let mut r = Point{x:spacing/2.0, y:spacing/2.0};
 		while r.y < SIZE-spacing/2.0 {
@@ -134,17 +139,34 @@ impl State {
 			t,
 			rpar,
 			vpar,
+			offset,
 			rsol,
 			vsol,
 		}
 	}
 
 	fn step(&mut self, dt: f64, p: Params) {
+		self.t += dt;
+
 		let (fpar0, fsol0) = force_calc(p, self.rpar, &self.rsol);
+		let fpar0 = fpar0 + Point{x:p.force, y:0.0};
 
 		let apar0 = fpar0/p.mpar*1.0E+6_f64;
 		self.rpar = self.rpar + self.vpar*dt + 0.5*apar0*dt*dt;
-		wrap(&mut self.rpar); 
+		if self.rpar.x >= SIZE {
+			self.rpar.x -= SIZE;
+			self.offset.x += SIZE;
+		} else if self.rpar.x < 0.0 {
+			self.rpar.x += SIZE;
+			self.offset.x -= SIZE;
+		}
+		if self.rpar.y >= SIZE {
+			self.rpar.y -= SIZE;
+			self.offset.y += SIZE;
+		} else if self.rpar.y < 0.0 {
+			self.rpar.y += SIZE;
+			self.offset.y -= SIZE;
+		}
 
 		{
 			let pos_vel_force = self.rsol.iter_mut()
@@ -160,6 +182,7 @@ impl State {
 		}
 
 		let (fpar1, fsol1) = force_calc(p, self.rpar, &self.rsol);
+		let fpar1 = fpar1 + Point{x:p.force, y:0.0};
 
 		let apar1 = fpar1/p.mpar*1.0E+6_f64;
 		self.vpar = self.vpar + 0.5*(apar0 + apar1)*dt;
@@ -173,55 +196,8 @@ impl State {
 			let a0 = force0/p.msol*1.0E+6_f64;
 			let a1 = force1/p.msol*1.0E+6_f64;
 			*vel = *vel + 0.5*(a0 + a1)*dt;
-			// if a1.norm() > 40.0E+6_f64 {
-			// 	println!("vel={:?}",vel);
-			// }
 		}
 	}
-	// 	let (fpar0, fsol0) = force_calc(p, self.rpar, &self.rsol);
-
-	// 	let apar0 = fpar0/p.mpar*1.0E+6_f64;
-	// 	self.rpar = self.rpar + self.vpar*dt + 0.5*apar0*dt*dt;
-
-	// 	{
-	// 	let pos_vel_force = self.rsol.iter_mut()
-	// 		.zip( self.vsol.iter())
-	// 		.zip( fsol0.iter())
-	// 		.map( |((r,v),f)| (r,v,f) );
-
-	// 	for (pos,&vel,&force) in pos_vel_force {
-	// 		let a = force/p.msol*1.0E+6_f64;
-	// 		*pos = *pos + vel*dt + 0.5*a*dt*dt;
-	// 		if pos.x > SIZE {
-	// 			pos.x -= SIZE;
-	// 		}else if pos.x < 0.0 {
-	// 			pos.x += SIZE;
-	// 		}
-	// 		if pos.y > SIZE {
-	// 			pos.y -= SIZE;
-	// 		} else if pos.y < 0.0 {
-	// 			pos.y += SIZE;
-	// 		}
-	// 	}
-	// 	}
-
-	// 	let (fpar1, fsol1) = force_calc(p, self.rpar, &self.rsol);
-
-	// 	let apar1 = fpar1/p.mpar*1.0E+6_f64;
-	// 	self.vpar = self.vpar + 0.5*(apar0 + apar1)*dt;
-
-	// 	let vel_force0_force1 = self.vsol.iter_mut()
-	// 		.zip( fsol0.iter())
-	// 		.zip( fsol1.iter())
-	// 		.map( |((v,f0),f1)| (v,f0,f1) );
-
-	// 	for (vel, &force0, &force1) in vel_force0_force1 {
-	// 		let a0 = force0/p.msol*1.0E+6_f64;
-	// 		let a1 = force1/p.msol*1.0E+6_f64;
-	// 		*vel = *vel + 0.5*(a0 + a1)*dt;
-	// 	}
-
-	// }
 
 	fn draw(&self, p: Params, canvas: &Canvas) {
  		let Params{rad_par, rad_sol, ..} = p;
@@ -241,7 +217,7 @@ impl State {
 /// on the stack - provided with the smallvec crate) that
 /// holds the solvent particles in that set. Currently
 /// it holds the indices.
-type Bin = SmallVec<[usize;4]>;
+type Bin = SmallVec<[usize;10]>;
 struct BinList {
 	bins: Vec<Bin>,
 }
@@ -265,7 +241,7 @@ impl BinList{
 		let mut bins : Vec<Bin> = Vec::with_capacity(BIMAX*BIMAX);
 		for _i in 0..BIMAX {
 			for _j in 0..BIMAX{
-				bins.push(SmallVec::<[usize;4]>::new());
+				bins.push(SmallVec::<[usize;10]>::new());
 			}
 		}
 		BinList{bins}
@@ -285,8 +261,11 @@ const LJN : i32 = 2;
 fn lj(r: f64, p: Params) -> f64 {
 	let Params{rad_sol, ep, .. } = p;
 	let r0 = 2.0*rad_sol;
+	let r1 = 0.6*r0;
 	if r >= r0 {
 		0.0
+	} else if r < r1 {
+		2.0*(LJN as f64)*ep/r1*((r0/r1).powi(2*LJN)-(r0/r1).powi(LJN))
 	} else {
 		2.0*(LJN as f64)*ep/r*((r0/r).powi(2*LJN)-(r0/r).powi(LJN))
 	}
@@ -423,6 +402,20 @@ fn force_calc( p: Params, rpar: Point, rsol: &[Point]) -> (Point, Vec<Point>) {
 	(fpar, fsol)
 }
 
+fn reset_temp( vsol: &mut [Point], p: Params) {
+	let Params{msol, temp, ..} = p;
+	let mut v2avg = 0.0;
+	for vel in vsol.iter() {
+		v2avg += vel.norm_squared();
+	}
+	v2avg /= vsol.len() as f64;
+	let temp_current = msol/2.0/kB*v2avg*1.0e-6_f64;
+	let alpha = (temp/temp_current).sqrt();
+	for vel in vsol.iter_mut() {
+		*vel = *vel*alpha;
+	}
+}
+
 #[derive(Debug,Clone)]
 struct FullSim{
 	writing: bool,
@@ -433,9 +426,40 @@ struct FullSim{
 	textarea: TextArea,
 }
 
+impl FullSim {
+	fn writeln(&self) {
+		let t = self.state.t;
+		let Point{x,y} = self.state.rpar + self.state.offset;
+		self.textarea.write(&format!(",\n{{ {}, {}, {} }}", t, x, y));
+	}
+
+	fn writehead(&self) {
+		self.textarea.writeln( "t(ns), x(nm), y(nm)");
+		let t = self.state.t;
+		let Point{x,y} = self.state.rpar + self.state.offset;
+		self.textarea.write(&format!("{{ {{ {}, {}, {} }}", t, x, y));
+	}
+
+	fn writefoot(&self) {
+		self.textarea.writeln("}\n");
+	}
+}
+
 impl SimStep for FullSim {
 	fn step( &mut self, _dt: f64) {
-		let dt = 0.00002;
+		if self.step_count == 19 {
+			reset_temp(&mut self.state.vsol, self.p);
+			if self.writing { 
+				self.writeln(); 
+			}
+			self.step_count = 0;
+		} else {
+			self.step_count += 1;
+		}
+		let dt = 0.000025;
+		self.state.step(dt, self.p);
+		self.state.step(dt, self.p);
+		self.state.step(dt, self.p);
 		self.state.step(dt, self.p);
 		self.state.draw(self.p, &self.canvas);
 	}
@@ -444,17 +468,36 @@ impl SimStep for FullSim {
 fn main() {
 	let app = Container::new("app");
 	app.add_to_body();
+
+
+	let vis = Container::new("vis");
 	let mut canvas = Canvas::new("canvas");
-	app.add( &canvas);
-	let step_button = Button::new("step","Step");
-	app.add( &step_button);
+	vis.add( &canvas);
+	let sim_control = Toggle::new("start_stop", "Start", "Stop");
+	vis.add( &sim_control);
+	let sim_reset = Button::new("reset", "Reset");
+	vis.add( &sim_reset);
+	app.add( &vis);
+
+	let controls = Container::new("controls");
+	let force_slider = Range::new("f_slider", "Force (pN) : ", 0.0, 100.0, 1.0, 10.0);
+	controls.add( &force_slider);
+	app.add( &controls);
+
+	let output = Container::new("output");
+	let output_control = Toggle::new("write", "Write Data", "Stop Data");
+	output.add( &output_control);
+	let output_clear = Button::new("clear", "Clear");
+	output.add( &output_clear);
 	let textarea = TextArea::new("txt");
-	app.add( &textarea);
+	output.add( &textarea);
+	app.add( &output);
 
 	canvas.set_window(((0.0, 0.0), (SIZE,SIZE)));
 
 	let p = Params::init();
 	let state = State::init(0.6,p);
+	state.draw( p, &canvas);
 
 	let sim = FullSim{
 		writing: false,
@@ -466,37 +509,80 @@ fn main() {
 	};
 
 	let ref_sim = Simloop::new_ref(sim);
-	Simloop::start_loop(ref_sim.clone());
+	// Simloop::start_loop(ref_sim.clone());
 
-	// let ref_state = Rc::new(RefCell::new(state));
-	// ref_state.borrow_mut().draw(p, &canvas);
+	sim_control.add_toggle_function({
+		let ref_sim = ref_sim.clone();
+		move | status:bool | {
+			if status {
+				Simloop::start_loop(ref_sim.clone());
+				let sim = &mut ref_sim.borrow_mut().state;
+				if sim.writing {
+					sim.writehead();
+				}
+			} else {
+				ref_sim.borrow_mut().stop_loop();
+				let sim = &mut ref_sim.borrow_mut().state;
+				if sim.writing {
+					sim.writefoot();
+				}
+			}
+		}
+	});
 
-	// step_button.add_button_function({
-	// 	let ref_state = ref_state.clone();
-	// 	let canvas = canvas.clone();
-	// 	let textarea = textarea.clone();
-	// 	move | _:bool | {
-	// 		let mut state = ref_state.borrow_mut();
-	// 		state.step(0.00002, p);
-	// 		state.draw(p, &canvas);
+	sim_reset.add_button_function({
+		let ref_sim = ref_sim.clone();
+		let sim_control = sim_control.clone();
+		let force_slider = force_slider.clone();
+		move | _:bool | {
+			if sim_control.query() {
+				ref_sim.borrow_mut().stop_loop();
+				let sim = &mut ref_sim.borrow_mut().state;
+				sim_control.set(false);
+				sim.writefoot();
+			}
+			let sim = &mut ref_sim.borrow_mut().state;
+			sim.state = State::init(0.6, sim.p);
+			sim.p.force = force_slider.query();
+			sim.state.draw( sim.p, &sim.canvas);
+		}
+	});
 
-	// 		textarea.clear();
-	// 		let (fpar, _fsol) = force_calc(p, state.rpar, &state.rsol);
-	// 		textarea.writeln(&format!("f = {:?}", fpar));
-	// 		// for force in &fsol {
-	// 		// 	let Point{x, y} = *force;
-	// 		// 	if x != 0.0 && y != 0.0 {				
-	// 	 // 			textarea.writeln(&format!("f = {:?}",force));
-	// 	 // 		}
-	// 		// } 
-	// 	}
-	// })
+	force_slider.add_continuous_range_function({
+		let ref_sim = ref_sim.clone();
+		move | val:f64 | {
+			let sim = &mut ref_sim.borrow_mut().state;
+			sim.p.force = val;
+		}
+	});
 
-	// let (fpar, fsol) = force_calc(p, state.rpar, &state.rsol);
-	// for force in &fsol {
-	//  	textarea.writeln(&format!("f = {:?}",force));
-	// } 
-	// textarea.writeln("");
-	// textarea.writeln(&format!("number of solvent molecules: {}", state.rsol.len()));
+	output_control.add_toggle_function({
+		let sim_control = sim_control.clone();
+		let ref_sim = ref_sim.clone();
+		move | status:bool | {
+			let sim = &mut ref_sim.borrow_mut().state;
+			sim.writing = status;
+			sim.step_count = 0;
+			if sim_control.query() {
+				if status {
+					sim.writehead();
+				} else {
+					sim.writefoot();
+				}
+			}
+		} 
+	});
 
+	output_clear.add_button_function({
+		let ref_sim = ref_sim.clone();
+		let sim_control = sim_control.clone();
+		let textarea = textarea.clone();
+		move | _:bool | {
+			textarea.clear();
+			let sim = &mut ref_sim.borrow_mut().state;
+			if sim_control.query() && sim.writing {
+				sim.writehead();
+			}
+		}
+	});
 }
