@@ -339,6 +339,7 @@ impl Range {
 		// create the wrapper
 		let elem : HtmlElement = document().create_element( "div").unwrap().try_into().unwrap();
 		elem.class_list().add("control").unwrap();
+		elem.class_list().add("range").unwrap();
 		elem.set_attribute("id",name).unwrap();
 		elem.set_attribute("data-param-type","range").unwrap();
 
@@ -346,6 +347,7 @@ impl Range {
 		let text = document().create_text_node( text);
 		// create textarea
 		let input : InputElement = document().create_element( "input").unwrap().try_into().unwrap();
+		input.class_list().add("control_input").unwrap();
 		input.set_attribute("type", "text").unwrap();
 		input.set_attribute("id", &format!("{}_text",name)).unwrap();
 		input.set_raw_value(&format!("{}",min));

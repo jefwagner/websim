@@ -489,7 +489,9 @@ fn main() {
 	output.add( &output_control);
 	let output_clear = Button::new("clear", "Clear");
 	output.add( &output_clear);
-	let textarea = TextArea::new("txt");
+	let mut textarea = TextArea::new("txt");
+	textarea.set_cols(110);
+	textarea.set_rows(30);
 	output.add( &textarea);
 	app.add( &output);
 

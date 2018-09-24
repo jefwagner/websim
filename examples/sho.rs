@@ -84,6 +84,8 @@ impl Screen {
 		let output_control = Toggle::new("output_control", "Write Data", "Stop Data");
 		let output_clear = Button::new("output_clear", "Clear");
 		let mut textarea = TextArea::new("textarea");
+		textarea.set_cols(110);
+		textarea.set_rows(30);
 		output_clear.add_button_function({
 			let textarea = textarea.clone();
 			move | _:bool | {
@@ -209,6 +211,7 @@ impl ShoState{
 
 #[derive(Debug,Clone)]
 struct FullSim{
+	active: bool,
 	writing: bool,
 	step_count: u32,
 	screen: Screen,
@@ -248,10 +251,12 @@ impl SimStep for FullSim {
 }
 
 fn main() {
+	let active = false;
 	let writing = false;
 	let screen = Screen::new();
 	let mut sho_state = ShoState::new(&screen);
 	let mut sim = FullSim{
+		active,
 		writing,
 		step_count: 0, 
 		screen: screen.clone(), 
@@ -270,6 +275,7 @@ fn main() {
 						ref_state.state.sho_state.write( &ref_state.state.screen.textarea);
 						ref_state.state.step_count = 0;
 					}
+					ref_state.state.active = true;
 				}
 				Simloop::start_loop(state.clone());
 			} else {
@@ -296,6 +302,7 @@ fn main() {
 					output_control.set(false);					
 				}
 			}
+			ref_state.state.active = false;
 			ref_state.state.sho_state.reset();
 			ref_state.state.draw();
 		}
@@ -338,7 +345,10 @@ fn main() {
 		move | val:f64 | {
 			let mut ref_state = state.borrow_mut();
 			ref_state.state.sho_state.a_0 = L0 + val/100.0;
-			ref_state.state.draw();
+			if !ref_state.state.active {
+				ref_state.state.sho_state.reset();
+				ref_state.state.draw();
+			}
 		}
 	});
 
@@ -348,7 +358,10 @@ fn main() {
 		move | val:f64 | {
 			let mut ref_state = state.borrow_mut();
 			ref_state.state.sho_state.th_0 = val.to_radians();
-			ref_state.state.draw();
+			if !ref_state.state.active {
+				ref_state.state.sho_state.reset();
+				ref_state.state.draw();
+			}
 		}
 	});
 
